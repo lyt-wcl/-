@@ -71,7 +71,7 @@ public class DistributeClient {
             if (line.endsWith(";")) {
                 sb.append(line, 0, line.length());
                 String result = client.process(sb.toString());
-                if(result.equals("success"))
+                if (result.equals("success"))
                     Thread.sleep(1000);
                 else
                     System.out.println(result);
@@ -96,19 +96,19 @@ public class DistributeClient {
             System.out.println("please input your name.");
             Scanner scanner = new Scanner(System.in);
             clientName = scanner.nextLine();
-            stat = zkClient.exists("/client/" + clientName, false);
-            if(stat != null) {
+            stat = zkClient.exists("/master/client/" + clientName, false);
+            if (stat != null) {
                 System.out.println("Customer name already exists.");
             } else {
-                zkClient.create
-                        ("/master/client/" + clientName, "1".getBytes(),
-                                ZooDefs.Ids.OPEN_ACL_UNSAFE, CreateMode.EPHEMERAL);
+                zkClient.create("/master/client/" + clientName, "1".getBytes(),
+                        ZooDefs.Ids.OPEN_ACL_UNSAFE, CreateMode.EPHEMERAL);
             }
         } while (stat != null);
     }
 
     /**
      * 识别用户输入是否合法，以及根据sql类型选择接下来的操作逻辑
+     * 
      * @param input 输入的字符串
      * @return 若sql语句不合法，则返回提示。反之返回success
      */
@@ -117,8 +117,8 @@ public class DistributeClient {
         String table_name;
         String operationType;
         List<String> tableList = new ArrayList<>();
-        if(input.contains("SHOW") || input.contains("show")) {
-            for(String tableName: tableRegionMap.keySet()){
+        if (input.contains("SHOW") || input.contains("show")) {
+            for (String tableName : tableRegionMap.keySet()) {
                 System.out.println(tableName);
             }
             return "success";
@@ -133,7 +133,7 @@ public class DistributeClient {
             CreateTable createTableStatement = (CreateTable) statement;
             table_name = createTableStatement.getTable().getName();
 
-            if(tableRegionMap.containsKey(table_name)) {
+            if (tableRegionMap.containsKey(table_name)) {
                 return "Table " + table_name + " already exists.";
             } else {
                 operationType = "CREATE_TABLE";
@@ -143,12 +143,13 @@ public class DistributeClient {
             // get the table name of statement
             Drop dropStatement = (Drop) statement;
             table_name = dropStatement.getName();
-            if(!tableRegionMap.containsKey(table_name)) {
+            if (!tableRegionMap.containsKey(table_name)) {
                 return "Table " + table_name + " doesn't exist.";
             } else {
                 operationType = "DROP_TABLE";
+                tableList.add(table_name);
             }
-            tableList.add(table_name);
+
         } else if (statement instanceof Select) {
             Select selectStatement = (Select) statement;
 
@@ -166,56 +167,70 @@ public class DistributeClient {
             // get the table name of statement
             Delete deleteStatement = (Delete) statement;
             table_name = deleteStatement.getTable().getName();
-            tableList.add(table_name);
-            operationType = "DELETE";
+            if (!tableRegionMap.containsKey(table_name)) {
+                return "Table " + table_name + " doesn't exist.";
+            } else {
+                operationType = "DELETE";
+                tableList.add(table_name);
+            }
+
         } else if (statement instanceof Insert) {
             // get the table name of statement
             Insert insertStatement = (Insert) statement;
             table_name = insertStatement.getTable().getName();
-            tableList.add(table_name);
-            operationType = "INSERT";
+            if (!tableRegionMap.containsKey(table_name)) {
+                return "Table " + table_name + " doesn't exist.";
+            } else {
+                tableList.add(table_name);
+                operationType = "INSERT";
+            }
+
         } else if (statement instanceof Update) {
             // get the table name of statement
             Update updateStatement = (Update) statement;
             table_name = updateStatement.getTables().get(0).getName();
-            tableList.add(table_name);
-            operationType = "UPDATE";
+            if (!tableRegionMap.containsKey(table_name)) {
+                return "Table " + table_name + " doesn't exist.";
+            } else {
+                tableList.add(table_name);
+                operationType = "UPDATE";
+            }
         } else {
             return "The function is not supported.";
         }
         // execute the SQL
         String sqlStatement = input;
 
-        //当需要查询或者操作的表只有一张，对应的逻辑。
-        if(tableList.size() == 1) {
+        // 当需要查询或者操作的表只有一张，对应的逻辑。
+        if (tableList.size() == 1) {
             String name = tableList.get(0);
             String combinedSQLString = "client/" + clientName + "##" + operationType + "##" + sqlStatement;
-            if(operationType.equals("SELECT")){
-                String regionNode =tableRegionMap.get(name);
+            if (operationType.equals("SELECT")) {
+                String regionNode = tableRegionMap.get(name);
                 setSqlStatement(combinedSQLString, regionNode);
-            } else if(operationType.equals("CREATE_TABLE") || operationType.equals("DROP_TABLE")){
+            } else if (operationType.equals("CREATE_TABLE") || operationType.equals("DROP_TABLE")) {
                 combinedSQLString = name + "##" + combinedSQLString;
                 setSqlStatement(combinedSQLString, "masterSql");
             } else {
-                String regionNode =tableRegionMap.get(name);
+                String regionNode = tableRegionMap.get(name);
                 setSqlStatement(name + "##" + combinedSQLString, "masterSql");
                 setSqlStatement(combinedSQLString, regionNode);
             }
 
         }
 
-        //当需要查询或者操作的表有多张，对应的逻辑。
+        // 当需要查询或者操作的表有多张，对应的逻辑。
         else {
             boolean inOneRegion = true;
             String firstRegion = tableRegionMap.get(tableList.get(0));
             for (String name : tableList) {
-                String regionNode =tableRegionMap.get(name);
-                if(!regionNode.equals(firstRegion)) {
+                String regionNode = tableRegionMap.get(name);
+                if (!regionNode.equals(firstRegion)) {
                     inOneRegion = false;
                     break;
                 }
             }
-            if(inOneRegion) {
+            if (inOneRegion) {
                 String combinedSQLString = "client/" + clientName + "##" + operationType + "##" + sqlStatement;
                 setSqlStatement(combinedSQLString, firstRegion);
             } else {
@@ -226,8 +241,9 @@ public class DistributeClient {
                 if (sb.length() > 0) {
                     sb.deleteCharAt(sb.length() - 1);
                 }
-                sb.append("##").append("client/" + clientName).append("##").append(operationType).append("##").append(sqlStatement);
-                //不同region下面的复杂查询
+                sb.append("##").append("client/" + clientName).append("##").append(operationType).append("##")
+                        .append(sqlStatement);
+                // 不同region下面的复杂查询
                 setSqlStatement(sb.toString(), "masterSql");
             }
         }
@@ -235,13 +251,14 @@ public class DistributeClient {
         return "success";
     }
 
-
     /**
      * 设置对应节点的sql语句和必要的信息
+     * 
      * @param SqlStatement 需要传递的sql语句和必要的信息
-     * @param regionNode 目标节点
+     * @param regionNode   目标节点
      */
-    private void setSqlStatement(String SqlStatement, String regionNode) throws InterruptedException, KeeperException, UnsupportedEncodingException {
+    private void setSqlStatement(String SqlStatement, String regionNode)
+            throws InterruptedException, KeeperException, UnsupportedEncodingException {
         String path = "/master/" + regionNode;
         byte[] data = SqlStatement.getBytes("UTF-8");
         zkClient.setData(path, data, -1);
@@ -262,6 +279,7 @@ public class DistributeClient {
 
     /**
      * 监听自己创建的节点，以获得sql语句的执行结果
+     * 
      * @param clientNode 自己的客户名
      */
     private void getExecuteSqlResult(String clientNode) throws InterruptedException, KeeperException {
@@ -278,7 +296,7 @@ public class DistributeClient {
                 }
                 String result = new String(data);
                 if (result.startsWith("SELECT##")) {
-                    result = result.substring(8);  // 去掉开头的 "SELECT##"
+                    result = result.substring(8); // 去掉开头的 "SELECT##"
                     String[] rows = result.split("\n");
                     if (rows.length > 0) {
                         String[] columns = rows[0].split(", ");
@@ -327,17 +345,18 @@ public class DistributeClient {
                 String storedData = new String(data);
                 // 解析字符串并将键值对存储到Map中
                 stringToMap(storedData);
-//                System.out.println("Map retrieved from ZooKeeper successfully.");
+                // System.out.println("Map retrieved from ZooKeeper successfully.");
 
             }
         }, null);
         String storedData = new String(data);
         stringToMap(storedData);
-//        System.out.println("Map retrieved from ZooKeeper successfully.");
+        // System.out.println("Map retrieved from ZooKeeper successfully.");
     }
 
     /**
      * 解析字符串并将键值对存储到Map中， 辅助实现retrieveMapFromZooKeeper()
+     * 
      * @param storedData 传入的一定格式的字符串
      */
     private void stringToMap(String storedData) {
