@@ -1,0 +1,17 @@
+create table id_age(id  int not null primary key, age int null);
+create table id_name(id  int not null primary key, name varchar(50) null);
+create table id_password(id  int not null primary key, password varchar(50) null);
+create table id_job(id  int not null primary key,job varchar(50) null);
+drop table id_password;
+INSERT INTO id_age (id, age) VALUES (1, 12);
+INSERT INTO id_age (id, age) VALUES (2, 22);
+INSERT INTO id_age (id, age) VALUES (3, 25);
+update id_age set age = 21 where id = 1;
+delete from id_age where id = 3;
+INSERT INTO id_name (id, name) VALUES (1, 'lyt');
+INSERT INTO id_name (id, name) VALUES (2, 'wyl');
+INSERT INTO id_name (id, name) VALUES (3, 'mby');
+select * from id_age, id_name;
+select * from id_name left outer join id_age on id_name.id = id_age.id;
+INSERT INTO id_password (id, password) VALUES (1, '123456');
+INSERT INTO id_job (id, job) VALUES (1, 'student');
